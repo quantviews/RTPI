@@ -4,7 +4,7 @@
 # This example is based on Python notebook provided by the authors of RTPI - https://colab.research.google.com/drive/1qqTe8uUwWY4j7-C67UdqwDDDVYPXdUWg?usp=sharing
 
 
-source('RTPI/functions.R', encoding = 'UTF-8')
+source('functions.R', encoding = 'UTF-8')
 
 date_start <- '2021-01-01'
 date_end   <- Sys.Date()
