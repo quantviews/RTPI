@@ -1,0 +1,11 @@
+base
+assertive
+httr
+data.table
+magrittr
+dplyr
+glue
+assert
+knitr
+DT
+ggplot2

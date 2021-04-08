@@ -1,0 +1,102 @@
+---
+title: "Получение данных по ценам из RTPI "
+author: "Салихов Марсель (marcel.salikhov@gmail.com)"
+date: "8 апреля, 2021"
+output: html_document
+bibliography: rtpi.bib
+params:
+     token:
+        label: "Enter token"
+        value: ""
+        input: password
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(dpi = 300)
+token <- params$token 
+
+```
+
+## Обзор
+
+RTPI - это база данных по ценам на отдельные потребительские товары, которая формируется за счет веб-скрейпинга Интернет-сайтов крупных розничных сетей обновляется в реальном времени. Описание RTPI представлено в публикации [@isakov2021]. Для доступа к данным вам необходимо обратиться к разрабочикам и получить токен. 
+
+[Примеры](https://colab.research.google.com/drive/1qqTe8uUwWY4j7-C67UdqwDDDVYPXdUWg?usp=sharing), представленные авторами пакета для получения и обработки данных данных, написаны на Python.
+
+## Получение данных
+
+Набор функций, представленный в `functions.R` позволяет получить доступ к данным RTPI из R, не обращаясь к Python напрямую. Таким образом, если вы знаете R, но не знаете Python, это облегчит доступ к данным.
+
+В настоящее время в наборе представлено несколько основных функций, которые позволяют решить большинство типовых задач.
+
+```{r, message=FALSE, warning=FALSE}
+source('functions.R', encoding = 'UTF-8')
+library(knitr)
+library(DT)
+
+```
+
+Получим данные весов для ИПЦ Росстата c помощью функции `rtpi_rosstat_weight`. Функция не требует никаких входных параметров, а возвращает таблицу с весами. Это официальные веса, которые используются Росстатом для расчета индекса потребительских цен. Столбец `rosstat_id` представляет собой идентификатор продуктовых категорий.
+
+```{r, cache=TRUE, echo=TRUE}
+# token <- '' # необходимо иметь токен
+weights <- rtpi_rosstat_weight()
+```
+
+```{r, results= "asis"}
+datatable((weights))
+```
+
+используем тот же пример, с линолеумом (`rosstat_id = 7411`), который представляет в примере разработчиков для Python.
+
+```{r,echo=TRUE, cache=TRUE}
+rosstat_id = 7411
+pg <- rtpi_price_page_rosstat(rosstat_id)
+datatable(pg)
+
+```
+
+Таблица `pg` содержит все товары, которые содержатся в базе и которое размечены, как относящиеся к категории `rosstat = 7411`, то есть к линолеуму. Обратите внимание, что скорее всего, это не все линолеумы, которые есть в базе. Это просто те, которые были размечены, то есть у которых есть ненулевой параметр `rosstat_id`ю
+
+Таблица `pg` содержится уникальный идентификатора товара-магазина (`store_id`), а также ссылку на веб-страницу магазина, откуда была взята информация по по ценам.
+
+В данном случае таблице `pg` содержится `r nrow(pg)` строк. Получим информацию о названии каждого продукта с помощью функции `get_prods_names_by_id`. Функция принимает вектор из идентификаторов продуктов (`web_price_id`) и возвращает таблицу.
+
+```{r, echo=TRUE, cache=TRUE}
+web_price_id  <- pg$web_price_id
+prods <- get_prods_names_by_id(web_price_id)
+datatable(prods)
+```
+
+Обратите, что мы смогли идентифицировать названия `r nrow(prods)` столбцов, то есть меньше, чем содержится в таблице `pg`.
+
+Теперь получим информацию по ценам на линолеумы, по которым есть названия. Для этого надо использовать функцию `rtpi_price_history`. Входным параметром является также вектор из `web_price_id`.
+
+```{r, echo=TRUE, cache=TRUE}
+web_price_ids <- prods$web_price_id
+prices <- rtpi_price_history(web_price_ids) # price history of items 
+prices <- widen_price_history(prices)
+
+```
+
+В таблице `prices` в колонках находятся отдельные товары (названия столбцов - `web_price_id`). По строкам - даты. База данных устроена таким образом, что запись информации о ценах происходит, если произошло изменение цен. В противном случае (то есть, если цены не изменились), то ничего не записывается. В таблице `prices` в те дни, в которые не были зафиксировано изменение цен будет стоять `NA`. Вспомогательная функция `widen_price_history` заполнит это `NA` предsщими значениями, если они есть. Это облегчит, к примеру, построение графиков.
+
+## Построение графика
+
+К примеру, мы хотим построить график по ценам на линолеумы, которые получили ранее.
+
+```{r, echo=TRUE, cache=TRUE}
+
+
+library(ggplot2)
+theme_set(theme_minimal())
+# преобразуем таблицу в длиный (long) формат
+prices_long <- tidyr::pivot_longer(prices, -1, names_to = "web_price_id", values_to = "price")
+prices_long <- merge(prices_long, prods, by = "web_price_id")
+
+p <- ggplot(prices_long, aes(x = date_observe, y = price, group = web_price_id))
+p <- p + geom_line(aes(alpha = 0.05)) + xlab(NULL) + ylab('рублей')+ theme(legend.position = "none")
+p <- p + scale_x_date(date_breaks = "1 month", date_labels = '%b')
+p + labs(title = 'Динамика цен на линолеумы', caption = 'Источник: RTPI')
+```

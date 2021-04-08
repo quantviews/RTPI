@@ -10,12 +10,10 @@ library(glue)
 library(assert)
 library(parallel)
 
-
-
 # -------------------------------------------------------------------------
 
 # server url and port for DB access 
-# you also need to have a token
+# you also need to have a token to get data 
 
 
 URL <- 'http://164.90.194.12:8080'
@@ -58,8 +56,8 @@ rtpi_rosstat_weight <- function(){
    return(df)
 }
 
-# 
-#' get all products in the DB
+
+#' Title get all products/web-price-id table from the DB
 #'
 #' @return
 #' @export
@@ -72,7 +70,33 @@ get_all_prods <- function()
    return(df)
 }
 
-# 
+#' Title get products names by  in the DB
+#'
+#' @return
+#' @export
+#'
+#' @examples
+get_prods_names_by_id <- function(web_price_id)
+{
+   assert(is.numeric(as.numeric(web_price_id)))
+   
+   if(length(web_price_id) == 1){
+      url <- paste0(glue('{URL}/rtpi_product_name?select=*&web_price_id=eq.'),
+                    web_price_id)
+      df <- sent_request(url)
+   } 
+   # you need to divide request because of the limit on data lenght (<1000 items)
+   if(length(web_price_id) > 1) {
+         prods <- paste0('(', paste(web_price_id, collapse = ','), ')')
+         url <- glue('{URL}/rtpi_product_name?select=*&web_price_id=in.{prods}')
+         df <- sent_request(url)
+   }   
+      
+   return(df)
+}
+
+
+ 
 #' Title get web_price_id by rosstad_id
 #'
 #' @param rosstat_id 
@@ -82,7 +106,7 @@ get_all_prods <- function()
 #'
 #' @examples
 rtpi_price_page_rosstat <- function(rosstat_id){
-   assert(is.numeric(rosstat_id))
+   assert(is.numeric(as.numeric(rosstat_id)))
    if(length(rosstat_id) == 1) url <- glue('{URL}/rtpi_price_page?select=*web_price_id&rosstat_id=eq.{rosstat_id}')
    
    if(length(rosstat_id) > 1) {
@@ -162,13 +186,14 @@ rtpi_price_page_web <- function(web_price_id){
 #'
 #' @examples
 rtpi_price_history  <- function(web_price_id){
-   assert(is.numeric(web_price_id))
+   assert(is.numeric(as.numeric(web_price_id)))
    
    if(length(web_price_id) == 1) url <- glue('{URL}/rtpi_price?select=date_observe,current_price,web_price_id&web_price_id=eq.{web_price_id}')
    if(length(web_price_id) > 1) {
           prods <- paste0('(', paste(web_price_id, collapse = ','), ')')
           url <- glue('{URL}/rtpi_price?select=date_observe,current_price,web_price_id&web_price_id=in.{prods}')
        }
+   
    
    if(length(web_price_id) == 0) stop
    df <- sent_request(url)
@@ -178,8 +203,9 @@ rtpi_price_history  <- function(web_price_id){
    
    df <- df %>% 
       group_by(web_price_id, date_observe) %>% 
-      summarise(current_price = mean(current_price))
+      summarise(current_price = mean(current_price), .groups = 'drop')
    df <- tidyr::pivot_wider(df, values_from  = current_price, names_from = web_price_id, values_fill = NA )
+   df <- df[order(df$date_observe),]
    #as.character(all$web_price_id) %in% names(df)[-1]
    return(df)
 }
@@ -229,11 +255,11 @@ get_like_store <- function(url_){
 #' @examples
 widen_price_history <- function(h){
  start_date <- h$date_observe[1]
- end_date <- Sys.Date()
+ end_date <- h$date_observe[nrow(h)]
  dt <- seq.Date(start_date, end_date, by = 1)
  hh <- data.frame("date_observe" = dt)
  hh <- merge(hh, h, by = 'date_observe', all.x = TRUE)
- hh[,-1] <- apply(hh[,-1],2, zoo::na.locf)
+ hh <- zoo::na.locf(hh, na.rm = FALSE)
  return(hh)
 }
    
