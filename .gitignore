@@ -7,7 +7,7 @@
 
 # Data
 ojdata/*
-*.Rdata
+*.RData
 *.Rproj
 *.Rhistory
 *.zip
@@ -29,4 +29,3 @@ logs/
 *.log
 
 example_cache/
-.Rproj.user/
